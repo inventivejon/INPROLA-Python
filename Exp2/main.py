@@ -1,4 +1,4 @@
-import exsyl
+import inprola_python
 
 if __name__ == "__main__":
-    exsyl.startConsoleInterface()
+    inprola_python.startConsoleInterface()

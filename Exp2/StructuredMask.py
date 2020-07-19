@@ -1,3 +1,4 @@
+import copy
 
 class StructuredMask:
     structuredMasks = []
@@ -139,6 +140,85 @@ class StructuredMask:
             return [rawMask[1], structuredMasks]
         else:
             return structuredMasks
+
+        
+    def CompareToMask(self, mask, sentence, objectContent):
+        # TODO: For now only one sentence option will be recognized.
+        print("Call Compare sentence {} to Mask: {} with content {}".format(sentence, mask, objectContent))
+        mask_idx = 0
+        sentence_idx = 0
+        while mask_idx < len(mask) and sentence_idx < len(sentence):
+            maskEntry = mask[mask_idx]
+            if maskEntry[0] == 'raw':
+                print("Compare raw {} with word {}".format(maskEntry[1], sentence[sentence_idx]))
+                if maskEntry[1] == '':
+                    mask_idx = mask_idx + 1
+                elif maskEntry[1] == sentence[sentence_idx]:
+                    mask_idx = mask_idx + 1
+                    sentence_idx = sentence_idx + 1
+                else:
+                    return (False, {})
+            elif maskEntry[0] == 'object':
+                print("Recognized object {}".format(sentence[sentence_idx]))
+                if maskEntry[1][0][1] in objectContent:
+                    objectContent[maskEntry[1][0][1]] = objectContent[maskEntry[1][0][1]] + [sentence[sentence_idx]]
+                else:
+                    objectContent[maskEntry[1][0][1]] = [sentence[sentence_idx]]
+                mask_idx = mask_idx + 1
+                sentence_idx = sentence_idx + 1
+            elif maskEntry[0] == 'alternative':
+                print("Recognized alternative")
+                for singleAlternative in maskEntry[1]:
+                    subResult = self.CompareToMask([singleAlternative] + mask[mask_idx+1:], sentence[sentence_idx:],copy.deepcopy(objectContent))
+                    if subResult[0]:
+                        return subResult
+                return (False, {})
+            elif maskEntry[0] == 'repeatable':
+                print("Recognized repeatable")
+                # In case of repeatable there must be one sequence match and then either none or another sequence match
+                # In order to map this we transform the masl to one entry that need to follow and then another sequence with alternative none (representation of optional)
+                return self.CompareToMask(maskEntry[1] + [('alternative', [('subSentence',maskEntry[1])] + [('raw','')])] +  mask[mask_idx+1:], sentence[sentence_idx:],copy.deepcopy(objectContent))
+            elif maskEntry[0] == 'subSentence':
+                print("Recognized subsentence")
+                # This is a subsentence. Unpack and add to rest of mask
+                return self.CompareToMask(maskEntry[1] + mask[mask_idx+1:], sentence[sentence_idx:],copy.deepcopy(objectContent))
+            if mask_idx >= len(mask) and sentence_idx >= len(sentence):
+                # Both at end. Definitely ok
+                return (True, objectContent)
+            elif sentence_idx >= len(sentence):
+                # Sentence at end but still mask. Could still match due to optional entry.
+                # Add additional empty word.
+                sentence = sentence + [""]
+            elif mask_idx >= len(mask):
+                # Mask at end but still words. Check if only one word left and empty word. Otherwise no match
+                if sentence[sentence_idx] == '':
+                    return (True, objectContent)
+                else:
+                    return (False, {})
+        return (False, {})
+
+    def DrawStructuredMaskTree(self, structuredMask, level):
+        indentCounter = 0
+        indentCharacters = "   "
+        realIndent = ""
+        while indentCounter < level:
+            indentCounter = indentCounter + 1
+            realIndent = realIndent + indentCharacters
+        entryCounter = 0
+        for singleEntry in structuredMask:
+            if entryCounter == 0 and level > 0:
+                realIndent = realIndent[:-2]
+                realIndent = realIndent + "->"
+            elif len(realIndent) > 0:
+                realIndent = realIndent[:-2]
+                realIndent = realIndent + "  "
+            if type(singleEntry[1]) != str:
+                print("{}|{}".format(realIndent, singleEntry[0]))
+                DrawStructuredMaskTree(singleEntry[1], level + 1)
+            else:
+                print("{}|{}".format(realIndent, singleEntry[1]))
+            entryCounter = entryCounter + 1
+
 
     def __init__(self, rawMasks):
         self.structuredMasks = self.CreateStructuredMask(rawMasks, self.maskInterpreter)
